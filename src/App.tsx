@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { FiMenu, FiPlus, FiMoon, FiSun, FiMic, FiSend, FiThumbsUp, FiThumbsDown, FiCode, FiMessageSquare } from 'react-icons/fi';
+import { useState, useEffect, useRef } from 'react';
+import { FiMenu, FiPlus, FiMoon, FiSun, FiMic, FiSend, FiThumbsUp, FiThumbsDown, FiCode, FiMessageSquare, FiCopy, FiTrash2, FiCheck } from 'react-icons/fi';
 import type { Theme, Chat, Message } from './types';
-import { mockChats, mockDataSources, welcomeMessages } from './data/mockData';
+import { mockChats, mockDataSources } from './data/mockData';
 
 function App() {
     const [theme, setTheme] = useState<Theme>('dark');
@@ -10,13 +10,38 @@ function App() {
     const [activeChat, setActiveChat] = useState<Chat | null>(mockChats[0]);
     const [inputValue, setInputValue] = useState('');
     const [showSqlQuery, setShowSqlQuery] = useState<Record<string, boolean>>({});
+    const [likedMessages, setLikedMessages] = useState<Record<string, 'liked' | 'disliked' | null>>({});
+    const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const chatAreaRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
     }, [theme]);
 
+    // Auto-scroll to bottom when new messages arrive
+    useEffect(() => {
+        if (chatAreaRef.current) {
+            chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight;
+        }
+    }, [activeChat?.messages]);
+
+    // Toast auto-dismiss
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => setToast(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+    };
+
     const toggleTheme = () => {
         setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+        showToast(`Switched to ${theme === 'dark' ? 'light' : 'dark'} mode`);
     };
 
     const createNewChat = () => {
@@ -29,6 +54,17 @@ function App() {
         };
         setChats([newChat, ...chats]);
         setActiveChat(newChat);
+        showToast('New chat created');
+    };
+
+    const deleteChat = (chatId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const updatedChats = chats.filter(c => c.id !== chatId);
+        setChats(updatedChats);
+        if (activeChat?.id === chatId) {
+            setActiveChat(updatedChats[0] || null);
+        }
+        showToast('Chat deleted');
     };
 
     const sendMessage = () => {
@@ -69,6 +105,45 @@ function App() {
         }
     };
 
+    const handleLike = (messageId: string) => {
+        setLikedMessages(prev => ({
+            ...prev,
+            [messageId]: prev[messageId] === 'liked' ? null : 'liked'
+        }));
+        showToast('Thanks for your feedback!');
+    };
+
+    const handleDislike = (messageId: string) => {
+        setLikedMessages(prev => ({
+            ...prev,
+            [messageId]: prev[messageId] === 'disliked' ? null : 'disliked'
+        }));
+        showToast('Thanks for your feedback!');
+    };
+
+    const handleCopy = async (text: string, messageId: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedMessage(messageId);
+            showToast('Copied to clipboard!');
+            setTimeout(() => setCopiedMessage(null), 2000);
+        } catch {
+            showToast('Failed to copy', 'error');
+        }
+    };
+
+    const handleVoiceInput = () => {
+        if (isRecording) {
+            setIsRecording(false);
+            showToast('Voice recording stopped');
+            // Simulate voice input
+            setInputValue('What are the total sales for Q4?');
+        } else {
+            setIsRecording(true);
+            showToast('Listening... Speak now');
+        }
+    };
+
     const groupChatsByDate = (chats: Chat[]) => {
         const today = new Date();
         const yesterday = new Date(today);
@@ -102,8 +177,41 @@ function App() {
         setInputValue(suggestion);
     };
 
+    const renderChatGroup = (title: string, chats: Chat[]) => {
+        if (chats.length === 0) return null;
+        return (
+            <div className="chat-group">
+                <div className="chat-group-title">{title}</div>
+                {chats.map(chat => (
+                    <div
+                        key={chat.id}
+                        className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
+                        onClick={() => setActiveChat(chat)}
+                    >
+                        <FiMessageSquare size={16} />
+                        <span className="chat-item-text">{chat.title}</span>
+                        <button
+                            className="chat-item-delete"
+                            onClick={(e) => deleteChat(chat.id, e)}
+                            title="Delete chat"
+                        >
+                            <FiTrash2 size={14} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
     return (
         <div className="app-container">
+            {/* Toast Notification */}
+            {toast && (
+                <div className={`toast ${toast.type}`}>
+                    {toast.message}
+                </div>
+            )}
+
             {/* Sidebar */}
             <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
                 <div className="sidebar-header">
@@ -117,53 +225,10 @@ function App() {
                 </div>
 
                 <div className="chat-history">
-                    {chatGroups.today.length > 0 && (
-                        <div className="chat-group">
-                            <div className="chat-group-title">Today</div>
-                            {chatGroups.today.map(chat => (
-                                <div
-                                    key={chat.id}
-                                    className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
-                                    onClick={() => setActiveChat(chat)}
-                                >
-                                    <FiMessageSquare size={16} />
-                                    <span className="chat-item-text">{chat.title}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {chatGroups.lastWeek.length > 0 && (
-                        <div className="chat-group">
-                            <div className="chat-group-title">Last 7 Days</div>
-                            {chatGroups.lastWeek.map(chat => (
-                                <div
-                                    key={chat.id}
-                                    className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
-                                    onClick={() => setActiveChat(chat)}
-                                >
-                                    <FiMessageSquare size={16} />
-                                    <span className="chat-item-text">{chat.title}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {chatGroups.older.length > 0 && (
-                        <div className="chat-group">
-                            <div className="chat-group-title">Older</div>
-                            {chatGroups.older.map(chat => (
-                                <div
-                                    key={chat.id}
-                                    className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
-                                    onClick={() => setActiveChat(chat)}
-                                >
-                                    <FiMessageSquare size={16} />
-                                    <span className="chat-item-text">{chat.title}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    {renderChatGroup('Today', chatGroups.today)}
+                    {renderChatGroup('Yesterday', chatGroups.yesterday)}
+                    {renderChatGroup('Last 7 Days', chatGroups.lastWeek)}
+                    {renderChatGroup('Older', chatGroups.older)}
                 </div>
 
                 <div className="data-sources">
@@ -199,7 +264,7 @@ function App() {
                     </div>
 
                     <div className="header-right">
-                        <button className="theme-toggle" onClick={toggleTheme}>
+                        <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
                             {theme === 'dark' ? <FiSun size={20} /> : <FiMoon size={20} />}
                         </button>
                         <div className="user-avatar">U</div>
@@ -207,7 +272,7 @@ function App() {
                 </header>
 
                 {/* Chat Area */}
-                <div className="chat-area">
+                <div className="chat-area" ref={chatAreaRef}>
                     {!activeChat || activeChat.messages.length === 0 ? (
                         <div className="welcome-container fade-in">
                             <div className="welcome-icon">Q</div>
@@ -266,15 +331,30 @@ function App() {
 
                                         {message.sender === 'assistant' && (
                                             <div className="message-actions">
-                                                <button className="action-btn" title="Like">
+                                                <button
+                                                    className={`action-btn ${likedMessages[message.id] === 'liked' ? 'liked' : ''}`}
+                                                    title="Like"
+                                                    onClick={() => handleLike(message.id)}
+                                                >
                                                     <FiThumbsUp />
                                                 </button>
-                                                <button className="action-btn" title="Dislike">
+                                                <button
+                                                    className={`action-btn ${likedMessages[message.id] === 'disliked' ? 'disliked' : ''}`}
+                                                    title="Dislike"
+                                                    onClick={() => handleDislike(message.id)}
+                                                >
                                                     <FiThumbsDown />
+                                                </button>
+                                                <button
+                                                    className={`action-btn ${copiedMessage === message.id ? 'copied' : ''}`}
+                                                    title="Copy"
+                                                    onClick={() => handleCopy(message.content, message.id)}
+                                                >
+                                                    {copiedMessage === message.id ? <FiCheck /> : <FiCopy />}
                                                 </button>
                                                 {message.sqlQuery && (
                                                     <button
-                                                        className="action-btn"
+                                                        className={`action-btn ${showSqlQuery[message.id] ? 'active' : ''}`}
                                                         title="View SQL"
                                                         onClick={() => toggleSqlQuery(message.id)}
                                                     >
@@ -300,7 +380,11 @@ function App() {
                 <div className="chat-input-container">
                     <div className="chat-input-wrapper">
                         <div className="chat-input">
-                            <button className="voice-btn" title="Voice input">
+                            <button
+                                className={`voice-btn ${isRecording ? 'recording' : ''}`}
+                                title={isRecording ? 'Stop recording' : 'Voice input'}
+                                onClick={handleVoiceInput}
+                            >
                                 <FiMic />
                             </button>
                             <textarea
@@ -324,6 +408,13 @@ function App() {
                         </div>
                     </div>
                 </div>
+
+                {/* Footer */}
+                <footer className="footer">
+                    <div className="footer-brand">
+                        Powered by <a href="https://quadratyx.com" target="_blank" rel="noopener noreferrer">Quadratyx</a>
+                    </div>
+                </footer>
             </main>
         </div>
     );
