@@ -1,15 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import {
     FiMenu, FiPlus, FiMoon, FiSun, FiMic, FiSend, FiThumbsUp, FiThumbsDown,
-    FiCode, FiMessageSquare, FiCopy, FiTrash2, FiCheck, FiHelpCircle, FiPin,
+    FiCode, FiMessageSquare, FiCopy, FiTrash2, FiCheck, FiHelpCircle, FiBookmark,
     FiShare2, FiDatabase, FiClock, FiRefreshCw, FiChevronRight, FiSearch,
-    FiBookOpen, FiStar, FiCalendar, FiFilter, FiX, FiDownload
+    FiBookOpen, FiStar, FiCalendar, FiFilter, FiX, FiDownload, FiLogOut,
+    FiSettings, FiUser, FiLock, FiMail
 } from 'react-icons/fi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import type { Theme, Chat, Message, FilterContext, Playbook } from './types';
 import { mockChats, mockDataSources, mockPlaybooks, mockSavedInsights, defaultFilterContext, quickSuggestions, generateAnalyticsResponse } from './data/mockData';
 
 function App() {
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [loginEmail, setLoginEmail] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [loginError, setLoginError] = useState('');
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [theme, setTheme] = useState<Theme>('dark');
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [contextPanelOpen, setContextPanelOpen] = useState(true);
@@ -24,13 +30,13 @@ function App() {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingStep, setLoadingStep] = useState(0);
     const [filterContext, setFilterContext] = useState<FilterContext>(defaultFilterContext);
-    const [showPlaybooks, setShowPlaybooks] = useState(false);
     const [activePlaybook, setActivePlaybook] = useState<Playbook | null>(null);
     const [playbookStep, setPlaybookStep] = useState(0);
     const [pinnedMessages, setPinnedMessages] = useState<Set<string>>(new Set());
     const [sidebarTab, setSidebarTab] = useState<'chats' | 'saved' | 'playbooks'>('chats');
     const [searchQuery, setSearchQuery] = useState('');
     const chatAreaRef = useRef<HTMLDivElement>(null);
+    const profileMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
@@ -49,15 +55,51 @@ function App() {
         }
     }, [toast]);
 
+    // Close profile menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+                setShowProfileMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
     };
 
-    const toggleTheme = () => {
-        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    const handleLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!loginEmail || !loginPassword) {
+            setLoginError('Please enter email and password');
+            return;
+        }
+        // Simulate login
+        if (loginEmail && loginPassword.length >= 4) {
+            setIsLoggedIn(true);
+            setLoginError('');
+            showToast('Welcome to AskQ!');
+        } else {
+            setLoginError('Invalid credentials');
+        }
     };
 
-    const createNewChat = () => {
+    const handleLogout = () => {
+        setIsLoggedIn(false);
+        setShowProfileMenu(false);
+        setLoginEmail('');
+        setLoginPassword('');
+        showToast('Logged out successfully');
+    };
+
+    const toggleTheme = () => {
+        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+        showToast(`Switched to ${theme === 'dark' ? 'light' : 'dark'} mode`);
+    };
+
+    const createNewChat = (resetPlaybook = true) => {
         const newChat: Chat = {
             id: Date.now().toString(),
             title: 'New conversation',
@@ -65,10 +107,13 @@ function App() {
             createdAt: new Date(),
             updatedAt: new Date(),
         };
-        setChats([newChat, ...chats]);
+        setChats(prevChats => [newChat, ...prevChats]);
         setActiveChat(newChat);
-        setActivePlaybook(null);
+        if (resetPlaybook) {
+            setActivePlaybook(null);
+        }
         showToast('New chat created');
+        return newChat;
     };
 
     const deleteChat = (chatId: string, e: React.MouseEvent) => {
@@ -96,9 +141,10 @@ function App() {
         }
     };
 
-    const sendMessage = async (customQuery?: string) => {
+    const sendMessage = async (customQuery?: string, targetChat?: Chat) => {
         const query = customQuery || inputValue;
-        if (!query.trim() || !activeChat) return;
+        const baseChat = targetChat || activeChat;
+        if (!query.trim() || !baseChat) return;
 
         const userMessage: Message = {
             id: Date.now().toString(),
@@ -111,9 +157,10 @@ function App() {
         setInputValue('');
 
         const updatedChatWithUser = {
-            ...activeChat,
-            messages: [...activeChat.messages, userMessage],
+            ...baseChat,
+            messages: [...baseChat.messages, userMessage],
         };
+        setChats(prevChats => prevChats.map(c => c.id === baseChat.id ? updatedChatWithUser : c));
         setActiveChat(updatedChatWithUser);
 
         await simulateLoading();
@@ -131,13 +178,13 @@ function App() {
         };
 
         const finalChat = {
-            ...activeChat,
+            ...baseChat,
             title: query.substring(0, 40) + (query.length > 40 ? '...' : ''),
-            messages: [...activeChat.messages, userMessage, aiMessage],
+            messages: [...baseChat.messages, userMessage, aiMessage],
             updatedAt: new Date(),
         };
 
-        setChats(chats.map(c => c.id === activeChat.id ? finalChat : c));
+        setChats(prevChats => prevChats.map(c => c.id === baseChat.id ? finalChat : c));
         setActiveChat(finalChat);
         setIsLoading(false);
     };
@@ -215,8 +262,8 @@ function App() {
     const startPlaybook = (playbook: Playbook) => {
         setActivePlaybook(playbook);
         setPlaybookStep(0);
-        createNewChat();
-        sendMessage(playbook.steps[0].query);
+        const chat = createNewChat(false);
+        sendMessage(playbook.steps[0].query, chat);
     };
 
     const nextPlaybookStep = () => {
@@ -242,7 +289,10 @@ function App() {
         return { pinned, today: todayChats, older: olderChats };
     };
 
-    const chatGroups = groupChatsByDate(chats);
+    const filteredChats = chats.filter(c =>
+        c.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    const chatGroups = groupChatsByDate(filteredChats);
 
     const formatTime = (date: Date) => {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -375,10 +425,54 @@ function App() {
         );
     };
 
-    const filteredChats = chats.filter(c =>
-        c.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // ========== LOGIN SCREEN ==========
+    if (!isLoggedIn) {
+        return (
+            <div className="login-container" data-theme={theme}>
+                <div className="login-card">
+                    <div className="login-logo">
+                        <div className="logo-icon large">Q</div>
+                        <h1>AskQ</h1>
+                        <p>Enterprise AI Assistant</p>
+                    </div>
 
+                    <form onSubmit={handleLogin} className="login-form">
+                        <div className="form-group">
+                            <label><FiMail size={16} /> Email</label>
+                            <input
+                                type="email"
+                                value={loginEmail}
+                                onChange={(e) => setLoginEmail(e.target.value)}
+                                placeholder="your.email@company.com"
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label><FiLock size={16} /> Password</label>
+                            <input
+                                type="password"
+                                value={loginPassword}
+                                onChange={(e) => setLoginPassword(e.target.value)}
+                                placeholder="••••••••"
+                            />
+                        </div>
+
+                        {loginError && <div className="login-error">{loginError}</div>}
+
+                        <button type="submit" className="login-btn">
+                            Sign In
+                        </button>
+
+                        <div className="login-footer">
+                            <span>Powered by <a href="https://quadratyx.com" target="_blank" rel="noopener noreferrer">Quadratyx</a></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    // ========== MAIN APP ==========
     return (
         <div className="app-container">
             {/* Toast Notification */}
@@ -394,7 +488,7 @@ function App() {
                     <button className="menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
                         <FiMenu size={20} />
                     </button>
-                    <button className="new-chat-btn" onClick={createNewChat}>
+                    <button className="new-chat-btn" onClick={() => createNewChat()}>
                         <FiPlus size={18} />
                         New Chat
                     </button>
@@ -436,7 +530,7 @@ function App() {
                 <div className="chat-history">
                     {sidebarTab === 'chats' && (
                         <>
-                            {renderChatGroup('Pinned', chatGroups.pinned, <FiPin size={12} />)}
+                            {renderChatGroup('Pinned', chatGroups.pinned, <FiBookmark size={12} />)}
                             {renderChatGroup('Today', chatGroups.today)}
                             {renderChatGroup('Previous', chatGroups.older)}
                         </>
@@ -480,20 +574,6 @@ function App() {
                         </div>
                     )}
                 </div>
-
-                <div className="data-sources">
-                    <div className="data-sources-title"><FiDatabase size={12} /> Connected Sources</div>
-                    {mockDataSources.map(source => (
-                        <div key={source.id} className="data-source-item">
-                            <span className={`data-source-status ${source.connected ? 'connected' : ''}`}></span>
-                            <span>{source.icon}</span>
-                            <span>{source.name}</span>
-                            {source.lastSync && (
-                                <span className="data-source-sync">{formatRelativeTime(source.lastSync)}</span>
-                            )}
-                        </div>
-                    ))}
-                </div>
             </aside>
 
             {/* Main Content */}
@@ -517,17 +597,71 @@ function App() {
                     </div>
 
                     <div className="header-right">
-                        <button
-                            className={`context-toggle ${contextPanelOpen ? 'active' : ''}`}
-                            onClick={() => setContextPanelOpen(!contextPanelOpen)}
-                            title="Toggle context panel"
-                        >
-                            <FiFilter size={18} />
-                        </button>
-                        <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
-                            {theme === 'dark' ? <FiSun size={20} /> : <FiMoon size={20} />}
-                        </button>
-                        <div className="user-avatar">U</div>
+                        {/* Profile with Dropdown */}
+                        <div className="profile-container" ref={profileMenuRef}>
+                            <div
+                                className="user-avatar"
+                                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                            >
+                                {loginEmail ? loginEmail[0].toUpperCase() : 'U'}
+                            </div>
+
+                            {showProfileMenu && (
+                                <div className="profile-menu">
+                                    <div className="profile-header">
+                                        <div className="profile-avatar">
+                                            {loginEmail ? loginEmail[0].toUpperCase() : 'U'}
+                                        </div>
+                                        <div className="profile-info">
+                                            <div className="profile-name">{loginEmail || 'User'}</div>
+                                            <div className="profile-role">Enterprise User</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="profile-section">
+                                        <div className="profile-section-title">Appearance</div>
+                                        <button className="profile-item" onClick={toggleTheme}>
+                                            {theme === 'dark' ? <FiSun size={16} /> : <FiMoon size={16} />}
+                                            <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                                        </button>
+                                    </div>
+
+                                    <div className="profile-section">
+                                        <div className="profile-section-title">Settings</div>
+                                        <button
+                                            className={`profile-item ${contextPanelOpen ? 'active' : ''}`}
+                                            onClick={() => { setContextPanelOpen(!contextPanelOpen); setShowProfileMenu(false); }}
+                                        >
+                                            <FiFilter size={16} />
+                                            <span>Filters Panel</span>
+                                            <span className="profile-item-badge">{contextPanelOpen ? 'ON' : 'OFF'}</span>
+                                        </button>
+                                        <button className="profile-item" onClick={() => setShowProfileMenu(false)}>
+                                            <FiSettings size={16} />
+                                            <span>Preferences</span>
+                                        </button>
+                                    </div>
+
+                                    <div className="profile-section">
+                                        <div className="profile-section-title">Data Sources</div>
+                                        {mockDataSources.map(source => (
+                                            <div key={source.id} className="profile-item connector">
+                                                <span className={`connector-status ${source.connected ? 'connected' : ''}`}></span>
+                                                <span>{source.icon} {source.name}</span>
+                                                <span className="profile-item-badge">{source.connected ? 'Connected' : 'Offline'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="profile-divider"></div>
+
+                                    <button className="profile-item logout" onClick={handleLogout}>
+                                        <FiLogOut size={16} />
+                                        <span>Logout</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </header>
 
@@ -595,7 +729,7 @@ function App() {
                             activeChat.messages.map((message) => (
                                 <div key={message.id} className={`message ${message.sender}`}>
                                     <div className="message-avatar">
-                                        {message.sender === 'user' ? 'U' : 'Q'}
+                                        {message.sender === 'user' ? (loginEmail ? loginEmail[0].toUpperCase() : 'U') : 'Q'}
                                     </div>
                                     <div className="message-content">
                                         {message.sender === 'assistant' && message.title ? (
@@ -609,7 +743,7 @@ function App() {
                                                             onClick={() => handlePin(message.id)}
                                                             title="Pin"
                                                         >
-                                                            <FiPin size={14} />
+                                                            <FiBookmark size={14} />
                                                         </button>
                                                         <button className="card-action" onClick={handleShare} title="Share">
                                                             <FiShare2 size={14} />
