@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiMenu, FiPlus, FiMoon, FiSun, FiMic, FiSend, FiThumbsUp, FiThumbsDown, FiCode, FiMessageSquare, FiCopy, FiTrash2, FiCheck } from 'react-icons/fi';
-import type { Theme, Chat, Message } from './types';
-import { mockChats, mockDataSources } from './data/mockData';
+import {
+    FiMenu, FiPlus, FiMoon, FiSun, FiMic, FiSend, FiThumbsUp, FiThumbsDown,
+    FiCode, FiMessageSquare, FiCopy, FiTrash2, FiCheck, FiHelpCircle, FiPin,
+    FiShare2, FiDatabase, FiClock, FiRefreshCw, FiChevronRight, FiSearch,
+    FiBookOpen, FiStar, FiCalendar, FiFilter, FiX, FiDownload
+} from 'react-icons/fi';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import type { Theme, Chat, Message, FilterContext, Playbook } from './types';
+import { mockChats, mockDataSources, mockPlaybooks, mockSavedInsights, defaultFilterContext, quickSuggestions, generateAnalyticsResponse } from './data/mockData';
 
 function App() {
     const [theme, setTheme] = useState<Theme>('dark');
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [contextPanelOpen, setContextPanelOpen] = useState(true);
     const [chats, setChats] = useState<Chat[]>(mockChats);
     const [activeChat, setActiveChat] = useState<Chat | null>(mockChats[0]);
     const [inputValue, setInputValue] = useState('');
@@ -14,20 +21,27 @@ function App() {
     const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingStep, setLoadingStep] = useState(0);
+    const [filterContext, setFilterContext] = useState<FilterContext>(defaultFilterContext);
+    const [showPlaybooks, setShowPlaybooks] = useState(false);
+    const [activePlaybook, setActivePlaybook] = useState<Playbook | null>(null);
+    const [playbookStep, setPlaybookStep] = useState(0);
+    const [pinnedMessages, setPinnedMessages] = useState<Set<string>>(new Set());
+    const [sidebarTab, setSidebarTab] = useState<'chats' | 'saved' | 'playbooks'>('chats');
+    const [searchQuery, setSearchQuery] = useState('');
     const chatAreaRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', theme);
     }, [theme]);
 
-    // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
         if (chatAreaRef.current) {
             chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight;
         }
     }, [activeChat?.messages]);
 
-    // Toast auto-dismiss
     useEffect(() => {
         if (toast) {
             const timer = setTimeout(() => setToast(null), 3000);
@@ -41,7 +55,6 @@ function App() {
 
     const toggleTheme = () => {
         setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-        showToast(`Switched to ${theme === 'dark' ? 'light' : 'dark'} mode`);
     };
 
     const createNewChat = () => {
@@ -54,6 +67,7 @@ function App() {
         };
         setChats([newChat, ...chats]);
         setActiveChat(newChat);
+        setActivePlaybook(null);
         showToast('New chat created');
     };
 
@@ -67,35 +81,65 @@ function App() {
         showToast('Chat deleted');
     };
 
-    const sendMessage = () => {
-        if (!inputValue.trim() || !activeChat) return;
+    const simulateLoading = async () => {
+        const steps = [
+            'Understanding question',
+            'Identifying tables',
+            'Generating SQL',
+            'Executing query',
+            'Analyzing results',
+        ];
+
+        for (let i = 0; i < steps.length; i++) {
+            setLoadingStep(i);
+            await new Promise(resolve => setTimeout(resolve, 400));
+        }
+    };
+
+    const sendMessage = async (customQuery?: string) => {
+        const query = customQuery || inputValue;
+        if (!query.trim() || !activeChat) return;
 
         const userMessage: Message = {
             id: Date.now().toString(),
-            content: inputValue,
+            content: query,
             sender: 'user',
             timestamp: new Date(),
         };
 
-        // Simulate AI response
+        setIsLoading(true);
+        setInputValue('');
+
+        const updatedChatWithUser = {
+            ...activeChat,
+            messages: [...activeChat.messages, userMessage],
+        };
+        setActiveChat(updatedChatWithUser);
+
+        await simulateLoading();
+
+        const analyticsData = generateAnalyticsResponse(query);
+
         const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `I understand you're asking about: "${inputValue}"\n\nI'm analyzing your enterprise data to provide an accurate response. This is a demonstration of the AskQ interface.\n\n**Sample Response:**\n- Processed your natural language query\n- Connected to your data sources\n- Generated insights from the data`,
+            content: `Based on your query about "${query}", here's what I found in your ${filterContext.dataSource} data for ${filterContext.dateRange.label}.`,
             sender: 'assistant',
             timestamp: new Date(),
-            sqlQuery: `-- Generated SQL Query\nSELECT * FROM your_table\nWHERE condition = 'value'\nORDER BY date DESC\nLIMIT 100;`,
+            sqlQuery: `-- Generated SQL for: ${query}\nSELECT * FROM data_table\nWHERE date BETWEEN '${filterContext.dateRange.start.toISOString().split('T')[0]}' AND '${filterContext.dateRange.end.toISOString().split('T')[0]}'\nORDER BY date DESC;`,
+            lastRefresh: new Date(),
+            ...analyticsData,
         };
 
-        const updatedChat = {
+        const finalChat = {
             ...activeChat,
-            title: inputValue.substring(0, 40) + (inputValue.length > 40 ? '...' : ''),
+            title: query.substring(0, 40) + (query.length > 40 ? '...' : ''),
             messages: [...activeChat.messages, userMessage, aiMessage],
             updatedAt: new Date(),
         };
 
-        setChats(chats.map(c => c.id === activeChat.id ? updatedChat : c));
-        setActiveChat(updatedChat);
-        setInputValue('');
+        setChats(chats.map(c => c.id === activeChat.id ? finalChat : c));
+        setActiveChat(finalChat);
+        setIsLoading(false);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -103,6 +147,10 @@ function App() {
             e.preventDefault();
             sendMessage();
         }
+    };
+
+    const handleDrillDown = (query: string) => {
+        sendMessage(query);
     };
 
     const handleLike = (messageId: string) => {
@@ -118,7 +166,6 @@ function App() {
             ...prev,
             [messageId]: prev[messageId] === 'disliked' ? null : 'disliked'
         }));
-        showToast('Thanks for your feedback!');
     };
 
     const handleCopy = async (text: string, messageId: string) => {
@@ -132,11 +179,32 @@ function App() {
         }
     };
 
+    const handlePin = (messageId: string) => {
+        setPinnedMessages(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(messageId)) {
+                newSet.delete(messageId);
+                showToast('Unpinned insight');
+            } else {
+                newSet.add(messageId);
+                showToast('Insight pinned!');
+            }
+            return newSet;
+        });
+    };
+
+    const handleShare = () => {
+        showToast('Share link copied!');
+    };
+
+    const handleExport = () => {
+        showToast('Exporting to CSV...');
+    };
+
     const handleVoiceInput = () => {
         if (isRecording) {
             setIsRecording(false);
             showToast('Voice recording stopped');
-            // Simulate voice input
             setInputValue('What are the total sales for Q4?');
         } else {
             setIsRecording(true);
@@ -144,23 +212,34 @@ function App() {
         }
     };
 
+    const startPlaybook = (playbook: Playbook) => {
+        setActivePlaybook(playbook);
+        setPlaybookStep(0);
+        createNewChat();
+        sendMessage(playbook.steps[0].query);
+    };
+
+    const nextPlaybookStep = () => {
+        if (activePlaybook && playbookStep < activePlaybook.steps.length - 1) {
+            const nextStep = playbookStep + 1;
+            setPlaybookStep(nextStep);
+            sendMessage(activePlaybook.steps[nextStep].query);
+        } else {
+            setActivePlaybook(null);
+            showToast('Playbook completed!');
+        }
+    };
+
     const groupChatsByDate = (chats: Chat[]) => {
         const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
         const lastWeek = new Date(today);
         lastWeek.setDate(lastWeek.getDate() - 7);
 
-        return {
-            today: chats.filter(c => c.createdAt.toDateString() === today.toDateString()),
-            yesterday: chats.filter(c => c.createdAt.toDateString() === yesterday.toDateString()),
-            lastWeek: chats.filter(c =>
-                c.createdAt > lastWeek &&
-                c.createdAt.toDateString() !== today.toDateString() &&
-                c.createdAt.toDateString() !== yesterday.toDateString()
-            ),
-            older: chats.filter(c => c.createdAt <= lastWeek),
-        };
+        const pinned = chats.filter(c => c.isPinned);
+        const todayChats = chats.filter(c => !c.isPinned && c.createdAt.toDateString() === today.toDateString());
+        const olderChats = chats.filter(c => !c.isPinned && c.createdAt.toDateString() !== today.toDateString());
+
+        return { pinned, today: todayChats, older: olderChats };
     };
 
     const chatGroups = groupChatsByDate(chats);
@@ -169,24 +248,117 @@ function App() {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const formatRelativeTime = (date: Date) => {
+        const diff = Date.now() - date.getTime();
+        const hours = Math.floor(diff / 3600000);
+        if (hours < 1) return 'Just now';
+        if (hours < 24) return `${hours}h ago`;
+        return `${Math.floor(hours / 24)}d ago`;
+    };
+
     const toggleSqlQuery = (messageId: string) => {
         setShowSqlQuery(prev => ({ ...prev, [messageId]: !prev[messageId] }));
     };
 
-    const handleSuggestionClick = (suggestion: string) => {
-        setInputValue(suggestion);
+    const renderChart = (message: Message) => {
+        if (!message.chartData) return null;
+
+        const { type, data } = message.chartData;
+        const colors = ['#1a7b8c', '#2196a8', '#26b3c4', '#e53935', '#ff9800'];
+
+        if (type === 'bar') {
+            return (
+                <div className="chart-container">
+                    <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={data}>
+                            <XAxis dataKey={message.chartData.xKey || 'name'} stroke="var(--text-tertiary)" fontSize={12} />
+                            <YAxis stroke="var(--text-tertiary)" fontSize={12} />
+                            <Tooltip
+                                contentStyle={{
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-light)',
+                                    borderRadius: '8px',
+                                    color: 'var(--text-primary)'
+                                }}
+                            />
+                            <Bar dataKey={message.chartData.yKey || 'value'} fill="#1a7b8c" radius={[4, 4, 0, 0]} />
+                            {data[0] && 'onTime' in data[0] && (
+                                <Bar dataKey="onTime" fill="#26b3c4" radius={[4, 4, 0, 0]} />
+                            )}
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            );
+        }
+
+        if (type === 'pie') {
+            return (
+                <div className="chart-container">
+                    <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                            <Pie
+                                data={data}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={50}
+                                outerRadius={80}
+                                paddingAngle={2}
+                            >
+                                {data.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={(entry as { color?: string }).color || colors[index % colors.length]} />
+                                ))}
+                            </Pie>
+                            <Tooltip
+                                contentStyle={{
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-light)',
+                                    borderRadius: '8px'
+                                }}
+                            />
+                        </PieChart>
+                    </ResponsiveContainer>
+                    <div className="chart-legend">
+                        {data.map((entry, index) => (
+                            <span key={index} className="legend-item">
+                                <span className="legend-dot" style={{ background: (entry as { color?: string }).color || colors[index % colors.length] }}></span>
+                                {(entry as { name: string }).name}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        if (type === 'line') {
+            return (
+                <div className="chart-container">
+                    <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={data}>
+                            <XAxis dataKey={message.chartData.xKey || 'name'} stroke="var(--text-tertiary)" fontSize={12} />
+                            <YAxis stroke="var(--text-tertiary)" fontSize={12} />
+                            <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: '8px' }} />
+                            <Line type="monotone" dataKey={message.chartData.yKey || 'value'} stroke="#1a7b8c" strokeWidth={2} dot={{ fill: '#1a7b8c' }} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            );
+        }
+
+        return null;
     };
 
-    const renderChatGroup = (title: string, chats: Chat[]) => {
+    const renderChatGroup = (title: string, chats: Chat[], icon?: React.ReactNode) => {
         if (chats.length === 0) return null;
         return (
             <div className="chat-group">
-                <div className="chat-group-title">{title}</div>
+                <div className="chat-group-title">{icon} {title}</div>
                 {chats.map(chat => (
                     <div
                         key={chat.id}
                         className={`chat-item ${activeChat?.id === chat.id ? 'active' : ''}`}
-                        onClick={() => setActiveChat(chat)}
+                        onClick={() => { setActiveChat(chat); setActivePlaybook(null); }}
                     >
                         <FiMessageSquare size={16} />
                         <span className="chat-item-text">{chat.title}</span>
@@ -202,6 +374,10 @@ function App() {
             </div>
         );
     };
+
+    const filteredChats = chats.filter(c =>
+        c.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     return (
         <div className="app-container">
@@ -224,20 +400,97 @@ function App() {
                     </button>
                 </div>
 
+                {/* Sidebar Tabs */}
+                <div className="sidebar-tabs">
+                    <button
+                        className={`sidebar-tab ${sidebarTab === 'chats' ? 'active' : ''}`}
+                        onClick={() => setSidebarTab('chats')}
+                    >
+                        <FiMessageSquare size={16} /> Chats
+                    </button>
+                    <button
+                        className={`sidebar-tab ${sidebarTab === 'playbooks' ? 'active' : ''}`}
+                        onClick={() => setSidebarTab('playbooks')}
+                    >
+                        <FiBookOpen size={16} /> Playbooks
+                    </button>
+                    <button
+                        className={`sidebar-tab ${sidebarTab === 'saved' ? 'active' : ''}`}
+                        onClick={() => setSidebarTab('saved')}
+                    >
+                        <FiStar size={16} /> Saved
+                    </button>
+                </div>
+
+                {/* Search */}
+                <div className="sidebar-search">
+                    <FiSearch size={16} />
+                    <input
+                        type="text"
+                        placeholder="Search..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+
                 <div className="chat-history">
-                    {renderChatGroup('Today', chatGroups.today)}
-                    {renderChatGroup('Yesterday', chatGroups.yesterday)}
-                    {renderChatGroup('Last 7 Days', chatGroups.lastWeek)}
-                    {renderChatGroup('Older', chatGroups.older)}
+                    {sidebarTab === 'chats' && (
+                        <>
+                            {renderChatGroup('Pinned', chatGroups.pinned, <FiPin size={12} />)}
+                            {renderChatGroup('Today', chatGroups.today)}
+                            {renderChatGroup('Previous', chatGroups.older)}
+                        </>
+                    )}
+
+                    {sidebarTab === 'playbooks' && (
+                        <div className="playbooks-list">
+                            {mockPlaybooks.map(playbook => (
+                                <div
+                                    key={playbook.id}
+                                    className="playbook-card"
+                                    onClick={() => startPlaybook(playbook)}
+                                >
+                                    <div className="playbook-icon">{playbook.icon}</div>
+                                    <div className="playbook-info">
+                                        <div className="playbook-name">{playbook.name}</div>
+                                        <div className="playbook-desc">{playbook.steps.length} steps</div>
+                                    </div>
+                                    <FiChevronRight size={16} />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {sidebarTab === 'saved' && (
+                        <div className="saved-list">
+                            {mockSavedInsights.map(insight => (
+                                <div key={insight.id} className="saved-card">
+                                    <div className="saved-icon"><FiStar size={16} /></div>
+                                    <div className="saved-info">
+                                        <div className="saved-name">{insight.name}</div>
+                                        <div className="saved-desc">{insight.description}</div>
+                                        {insight.schedule && (
+                                            <div className="saved-schedule">
+                                                <FiCalendar size={12} /> {insight.schedule.frequency}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="data-sources">
-                    <div className="data-sources-title">Connected Sources</div>
+                    <div className="data-sources-title"><FiDatabase size={12} /> Connected Sources</div>
                     {mockDataSources.map(source => (
                         <div key={source.id} className="data-source-item">
                             <span className={`data-source-status ${source.connected ? 'connected' : ''}`}></span>
                             <span>{source.icon}</span>
                             <span>{source.name}</span>
+                            {source.lastSync && (
+                                <span className="data-source-sync">{formatRelativeTime(source.lastSync)}</span>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -264,6 +517,13 @@ function App() {
                     </div>
 
                     <div className="header-right">
+                        <button
+                            className={`context-toggle ${contextPanelOpen ? 'active' : ''}`}
+                            onClick={() => setContextPanelOpen(!contextPanelOpen)}
+                            title="Toggle context panel"
+                        >
+                            <FiFilter size={18} />
+                        </button>
                         <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
                             {theme === 'dark' ? <FiSun size={20} /> : <FiMoon size={20} />}
                         </button>
@@ -271,118 +531,318 @@ function App() {
                     </div>
                 </header>
 
-                {/* Chat Area */}
-                <div className="chat-area" ref={chatAreaRef}>
-                    {!activeChat || activeChat.messages.length === 0 ? (
-                        <div className="welcome-container fade-in">
-                            <div className="welcome-icon">Q</div>
-                            <h1 className="welcome-title">Welcome to AskQ</h1>
-                            <p className="welcome-text">
-                                Your AI-powered assistant for enterprise data. Ask questions in plain English
-                                and get insights from your connected systems like <strong>SAP</strong>, <strong>RAMCO ERP</strong>,
-                                and <strong>EHR</strong> databases.
-                            </p>
-                            <div className="welcome-suggestions">
-                                <button
-                                    className="suggestion-chip"
-                                    onClick={() => handleSuggestionClick("What were last month's top-selling products?")}
-                                >
-                                    📊 Top-selling products
-                                </button>
-                                <button
-                                    className="suggestion-chip"
-                                    onClick={() => handleSuggestionClick("Show me orders shipped late this quarter")}
-                                >
-                                    📦 Late shipments
-                                </button>
-                                <button
-                                    className="suggestion-chip"
-                                    onClick={() => handleSuggestionClick("Employee attendance summary")}
-                                >
-                                    👥 Attendance report
-                                </button>
-                                <button
-                                    className="suggestion-chip"
-                                    onClick={() => handleSuggestionClick("Revenue comparison by region")}
-                                >
-                                    💰 Revenue by region
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        activeChat.messages.map((message) => (
-                            <div key={message.id} className={`message ${message.sender}`}>
-                                <div className="message-avatar">
-                                    {message.sender === 'user' ? 'U' : 'Q'}
+                {/* Main Area with Context Panel */}
+                <div className="main-area">
+                    {/* Chat Area */}
+                    <div className="chat-area" ref={chatAreaRef}>
+                        {/* Playbook Progress */}
+                        {activePlaybook && (
+                            <div className="playbook-progress">
+                                <div className="playbook-progress-header">
+                                    <span className="playbook-progress-icon">{activePlaybook.icon}</span>
+                                    <span className="playbook-progress-title">{activePlaybook.name}</span>
+                                    <button className="playbook-close" onClick={() => setActivePlaybook(null)}><FiX size={16} /></button>
                                 </div>
-                                <div className="message-content">
-                                    <div className="message-bubble">
-                                        {message.content.split('\n').map((line, i) => (
-                                            <p key={i} dangerouslySetInnerHTML={{
-                                                __html: line
-                                                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                                    .replace(/^- /g, '• ')
-                                            }} />
+                                <div className="playbook-steps">
+                                    {activePlaybook.steps.map((step, idx) => (
+                                        <div key={step.id} className={`playbook-step ${idx === playbookStep ? 'active' : ''} ${idx < playbookStep ? 'completed' : ''}`}>
+                                            <div className="step-dot">{idx < playbookStep ? '✓' : idx + 1}</div>
+                                            <span>{step.title}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                {playbookStep < activePlaybook.steps.length - 1 && (
+                                    <button className="playbook-next" onClick={nextPlaybookStep}>
+                                        Next: {activePlaybook.steps[playbookStep + 1]?.title} <FiChevronRight size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {!activeChat || activeChat.messages.length === 0 ? (
+                            <div className="welcome-container fade-in">
+                                <div className="welcome-icon">Q</div>
+                                <h1 className="welcome-title">Welcome to AskQ</h1>
+                                <p className="welcome-text">
+                                    Your AI-powered assistant for enterprise data. Ask questions in plain English
+                                    and get insights from <strong>SAP</strong>, <strong>RAMCO ERP</strong>, and <strong>EHR</strong> systems.
+                                </p>
+
+                                {/* Quick Start Playbooks */}
+                                <div className="welcome-playbooks">
+                                    <h3>📋 Quick Start Playbooks</h3>
+                                    <div className="playbook-chips">
+                                        {mockPlaybooks.map(pb => (
+                                            <button key={pb.id} className="playbook-chip" onClick={() => startPlaybook(pb)}>
+                                                {pb.icon} {pb.name}
+                                            </button>
                                         ))}
                                     </div>
+                                </div>
 
-                                    <div className="message-timestamp">
-                                        <span>{formatTime(message.timestamp)}</span>
-
-                                        {message.sender === 'assistant' && (
-                                            <div className="message-actions">
-                                                <button
-                                                    className={`action-btn ${likedMessages[message.id] === 'liked' ? 'liked' : ''}`}
-                                                    title="Like"
-                                                    onClick={() => handleLike(message.id)}
-                                                >
-                                                    <FiThumbsUp />
-                                                </button>
-                                                <button
-                                                    className={`action-btn ${likedMessages[message.id] === 'disliked' ? 'disliked' : ''}`}
-                                                    title="Dislike"
-                                                    onClick={() => handleDislike(message.id)}
-                                                >
-                                                    <FiThumbsDown />
-                                                </button>
-                                                <button
-                                                    className={`action-btn ${copiedMessage === message.id ? 'copied' : ''}`}
-                                                    title="Copy"
-                                                    onClick={() => handleCopy(message.content, message.id)}
-                                                >
-                                                    {copiedMessage === message.id ? <FiCheck /> : <FiCopy />}
-                                                </button>
-                                                {message.sqlQuery && (
-                                                    <button
-                                                        className={`action-btn ${showSqlQuery[message.id] ? 'active' : ''}`}
-                                                        title="View SQL"
-                                                        onClick={() => toggleSqlQuery(message.id)}
-                                                    >
-                                                        <FiCode />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
+                                <div className="welcome-suggestions">
+                                    <h3>💡 Try asking</h3>
+                                    <div className="suggestion-chips">
+                                        {quickSuggestions.map((s, i) => (
+                                            <button key={i} className="suggestion-chip" onClick={() => sendMessage(s.label)}>
+                                                {s.icon} {s.label}
+                                            </button>
+                                        ))}
                                     </div>
-
-                                    {message.sender === 'assistant' && message.sqlQuery && showSqlQuery[message.id] && (
-                                        <div className="sql-toggle slide-up">
-                                            <pre className="sql-code">{message.sqlQuery}</pre>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
-                        ))
+                        ) : (
+                            activeChat.messages.map((message) => (
+                                <div key={message.id} className={`message ${message.sender}`}>
+                                    <div className="message-avatar">
+                                        {message.sender === 'user' ? 'U' : 'Q'}
+                                    </div>
+                                    <div className="message-content">
+                                        {message.sender === 'assistant' && message.title ? (
+                                            /* Structured Analytics Card */
+                                            <div className="analytics-card">
+                                                <div className="card-header">
+                                                    <h3 className="card-title">{message.title}</h3>
+                                                    <div className="card-actions">
+                                                        <button
+                                                            className={`card-action ${pinnedMessages.has(message.id) ? 'active' : ''}`}
+                                                            onClick={() => handlePin(message.id)}
+                                                            title="Pin"
+                                                        >
+                                                            <FiPin size={14} />
+                                                        </button>
+                                                        <button className="card-action" onClick={handleShare} title="Share">
+                                                            <FiShare2 size={14} />
+                                                        </button>
+                                                        <button className="card-action" onClick={handleExport} title="Export">
+                                                            <FiDownload size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {message.keyMetric && (
+                                                    <div className="key-metric">
+                                                        <div className="metric-value">{message.keyMetric.value}</div>
+                                                        <div className="metric-label">{message.keyMetric.label}</div>
+                                                        {message.keyMetric.change && (
+                                                            <div className={`metric-change ${message.keyMetric.changeType}`}>
+                                                                {message.keyMetric.change}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {renderChart(message)}
+
+                                                <div className="card-body">
+                                                    <p>{message.content}</p>
+
+                                                    {message.insights && message.insights.length > 0 && (
+                                                        <div className="insights-list">
+                                                            <h4>💡 Key Insights</h4>
+                                                            <ul>
+                                                                {message.insights.map((insight, i) => (
+                                                                    <li key={i}>{insight}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {message.drillDownOptions && message.drillDownOptions.length > 0 && (
+                                                    <div className="drill-down-chips">
+                                                        {message.drillDownOptions.map((option, i) => (
+                                                            <button
+                                                                key={i}
+                                                                className="drill-chip"
+                                                                onClick={() => handleDrillDown(option.query)}
+                                                            >
+                                                                {option.icon} {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div className="card-footer">
+                                                    <div className="card-meta">
+                                                        {message.confidence && (
+                                                            <span className="meta-item confidence">
+                                                                <span className="confidence-bar">
+                                                                    <span style={{ width: `${message.confidence}%` }}></span>
+                                                                </span>
+                                                                {message.confidence}% confidence
+                                                            </span>
+                                                        )}
+                                                        {message.lastRefresh && (
+                                                            <span className="meta-item">
+                                                                <FiClock size={12} /> {formatRelativeTime(message.lastRefresh)}
+                                                            </span>
+                                                        )}
+                                                        {message.tablesUsed && (
+                                                            <span className="meta-item">
+                                                                <FiDatabase size={12} /> {message.tablesUsed.join(', ')}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="card-actions-row">
+                                                        <button
+                                                            className={`action-btn ${likedMessages[message.id] === 'liked' ? 'liked' : ''}`}
+                                                            onClick={() => handleLike(message.id)}
+                                                        >
+                                                            <FiThumbsUp size={14} />
+                                                        </button>
+                                                        <button
+                                                            className={`action-btn ${likedMessages[message.id] === 'disliked' ? 'disliked' : ''}`}
+                                                            onClick={() => handleDislike(message.id)}
+                                                        >
+                                                            <FiThumbsDown size={14} />
+                                                        </button>
+                                                        <button
+                                                            className={`action-btn ${copiedMessage === message.id ? 'copied' : ''}`}
+                                                            onClick={() => handleCopy(message.content, message.id)}
+                                                        >
+                                                            {copiedMessage === message.id ? <FiCheck size={14} /> : <FiCopy size={14} />}
+                                                        </button>
+                                                        <button
+                                                            className={`action-btn ${showSqlQuery[message.id] ? 'active' : ''}`}
+                                                            onClick={() => toggleSqlQuery(message.id)}
+                                                        >
+                                                            <FiCode size={14} />
+                                                        </button>
+                                                        <button className="action-btn" title="Explain">
+                                                            <FiHelpCircle size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {showSqlQuery[message.id] && message.sqlQuery && (
+                                                    <div className="sql-toggle slide-up">
+                                                        <div className="sql-header">
+                                                            <span>Generated SQL</span>
+                                                            <button onClick={() => handleCopy(message.sqlQuery!, message.id + '-sql')}>
+                                                                <FiCopy size={12} /> Copy
+                                                            </button>
+                                                        </div>
+                                                        <pre className="sql-code">{message.sqlQuery}</pre>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            /* Simple User Message */
+                                            <div className="message-bubble">
+                                                <p>{message.content}</p>
+                                            </div>
+                                        )}
+
+                                        <div className="message-timestamp">
+                                            <span>{formatTime(message.timestamp)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+
+                        {/* Loading State */}
+                        {isLoading && (
+                            <div className="message assistant">
+                                <div className="message-avatar">Q</div>
+                                <div className="message-content">
+                                    <div className="loading-card">
+                                        <div className="loading-title">Processing your query...</div>
+                                        <div className="loading-steps">
+                                            {['Understanding question', 'Identifying tables', 'Generating SQL', 'Executing query', 'Analyzing results'].map((step, i) => (
+                                                <div key={i} className={`loading-step ${i < loadingStep ? 'done' : ''} ${i === loadingStep ? 'active' : ''}`}>
+                                                    <span className="step-icon">{i < loadingStep ? '✓' : i === loadingStep ? '●' : '○'}</span>
+                                                    <span>{step}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Context Panel */}
+                    {contextPanelOpen && (
+                        <aside className="context-panel">
+                            <div className="context-section">
+                                <h4><FiCalendar size={14} /> Date Range</h4>
+                                <select
+                                    value={filterContext.dateRange.label}
+                                    onChange={(e) => setFilterContext(prev => ({
+                                        ...prev,
+                                        dateRange: { ...prev.dateRange, label: e.target.value }
+                                    }))}
+                                >
+                                    <option>Q1 2026</option>
+                                    <option>Q4 2025</option>
+                                    <option>Last 30 days</option>
+                                    <option>Last 90 days</option>
+                                    <option>Year to Date</option>
+                                </select>
+                            </div>
+
+                            <div className="context-section">
+                                <h4><FiDatabase size={14} /> Data Source</h4>
+                                <select
+                                    value={filterContext.dataSource}
+                                    onChange={(e) => setFilterContext(prev => ({ ...prev, dataSource: e.target.value }))}
+                                >
+                                    {mockDataSources.filter(s => s.connected).map(source => (
+                                        <option key={source.id}>{source.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="context-section">
+                                <h4><FiFilter size={14} /> Filters</h4>
+                                <button className="add-filter-btn">+ Add Filter</button>
+                            </div>
+
+                            <div className="context-section lineage">
+                                <h4>📊 Data Lineage</h4>
+                                <div className="lineage-items">
+                                    <div className="lineage-item">
+                                        <span>orders</span>
+                                        <span className="lineage-count">1.2M rows</span>
+                                    </div>
+                                    <div className="lineage-item">
+                                        <span>shipments</span>
+                                        <span className="lineage-count">890K rows</span>
+                                    </div>
+                                </div>
+                                <div className="lineage-refresh">
+                                    <FiRefreshCw size={12} /> Last sync: 2h ago
+                                </div>
+                            </div>
+
+                            <div className="context-section confidence">
+                                <h4>🔒 Data Quality</h4>
+                                <div className="confidence-meter">
+                                    <div className="confidence-fill" style={{ width: '92%' }}></div>
+                                </div>
+                                <div className="confidence-text">92% data completeness</div>
+                            </div>
+                        </aside>
                     )}
                 </div>
 
                 {/* Chat Input */}
                 <div className="chat-input-container">
                     <div className="chat-input-wrapper">
+                        {/* Quick Suggestions */}
+                        <div className="quick-suggestions">
+                            {quickSuggestions.slice(0, 3).map((s, i) => (
+                                <button key={i} className="quick-chip" onClick={() => sendMessage(s.label)}>
+                                    {s.icon} {s.label}
+                                </button>
+                            ))}
+                        </div>
+
                         <div className="chat-input">
                             <button
                                 className={`voice-btn ${isRecording ? 'recording' : ''}`}
-                                title={isRecording ? 'Stop recording' : 'Voice input'}
                                 onClick={handleVoiceInput}
                             >
                                 <FiMic />
@@ -391,20 +851,20 @@ function App() {
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Ask something about your data..."
+                                placeholder="Ask about your data..."
                                 rows={1}
+                                disabled={isLoading}
                             />
                             <button
                                 className="send-btn"
-                                onClick={sendMessage}
-                                disabled={!inputValue.trim()}
-                                title="Send message"
+                                onClick={() => sendMessage()}
+                                disabled={!inputValue.trim() || isLoading}
                             >
                                 <FiSend />
                             </button>
                         </div>
                         <div className="input-hint">
-                            AskQ can make mistakes. Verify important information.
+                            Press Enter to send • Shift+Enter for new line
                         </div>
                     </div>
                 </div>
