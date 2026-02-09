@@ -746,12 +746,12 @@ textarea:focus-visible {
   top: calc(100% + var(--spacing-sm));
   right: 0;
   width: 300px;
-  background: var(--bg-glass);
+  background: var(--bg-secondary);
   backdrop-filter: blur(24px);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 1000;
+  z-index: 9999;
   animation: fadeIn 0.2s ease;
   overflow: hidden;
 }

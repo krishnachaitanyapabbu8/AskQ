@@ -18,7 +18,7 @@ function App() {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [theme, setTheme] = useState<Theme>('dark');
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [contextPanelOpen, setContextPanelOpen] = useState(true);
+    const [contextPanelOpen, setContextPanelOpen] = useState(false);
     const [chats, setChats] = useState<Chat[]>(mockChats);
     const [activeChat, setActiveChat] = useState<Chat | null>(mockChats[0]);
     const [inputValue, setInputValue] = useState('');
