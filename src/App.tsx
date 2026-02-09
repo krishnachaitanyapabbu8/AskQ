@@ -8,7 +8,8 @@ import {
 } from 'react-icons/fi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import type { Theme, Chat, Message, FilterContext, Playbook } from './types';
-import { mockChats, mockDataSources, mockPlaybooks, mockSavedInsights, defaultFilterContext, quickSuggestions, generateAnalyticsResponse } from './data/mockData';
+import { mockChats, mockDataSources, mockPlaybooks, mockSavedInsights, defaultFilterContext, quickSuggestions } from './data/mockData';
+import { analyzeQuery, type AnalyticsResponse } from './data/queryAnalyzer';
 
 function App() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -165,16 +166,23 @@ function App() {
 
         await simulateLoading();
 
-        const analyticsData = generateAnalyticsResponse(query);
+        const analyticsData: AnalyticsResponse = analyzeQuery(query);
 
         const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `Based on your query about "${query}", here's what I found in your ${filterContext.dataSource} data for ${filterContext.dateRange.label}.`,
+            content: analyticsData.content,
             sender: 'assistant',
             timestamp: new Date(),
-            sqlQuery: `-- Generated SQL for: ${query}\nSELECT * FROM data_table\nWHERE date BETWEEN '${filterContext.dateRange.start.toISOString().split('T')[0]}' AND '${filterContext.dateRange.end.toISOString().split('T')[0]}'\nORDER BY date DESC;`,
+            sqlQuery: analyticsData.sqlQuery,
             lastRefresh: new Date(),
-            ...analyticsData,
+            title: analyticsData.title,
+            keyMetric: analyticsData.keyMetric,
+            chartData: analyticsData.chartData,
+            tableData: analyticsData.tableData,
+            insights: analyticsData.insights,
+            drillDownOptions: analyticsData.drillDownOptions,
+            confidence: analyticsData.confidence,
+            tablesUsed: analyticsData.tablesUsed,
         };
 
         const finalChat = {
@@ -397,6 +405,62 @@ function App() {
         }
 
         return null;
+    };
+
+    const renderTable = (message: Message) => {
+        if (!message.tableData) return null;
+
+        const { title, columns, rows } = message.tableData;
+
+        const formatCellValue = (value: any, type: string) => {
+            if (value === null || value === undefined) return '-';
+            switch (type) {
+                case 'currency':
+                    if (typeof value === 'number') {
+                        if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+                        if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                        return `$${value.toLocaleString()}`;
+                    }
+                    return value;
+                case 'percentage':
+                    return typeof value === 'number' ? `${value}%` : value;
+                case 'number':
+                    return typeof value === 'number' ? value.toLocaleString() : value;
+                case 'status':
+                    const statusClass = String(value).toLowerCase().replace(/\s+/g, '-');
+                    return <span className={`status-badge ${statusClass}`}>{value}</span>;
+                default:
+                    return value;
+            }
+        };
+
+        return (
+            <div className="data-table-container">
+                <h4 className="table-title">{title}</h4>
+                <div className="data-table-wrapper">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                {columns.map((col, i) => (
+                                    <th key={i}>{col.label}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.slice(0, 5).map((row, rowIdx) => (
+                                <tr key={rowIdx}>
+                                    {columns.map((col, colIdx) => (
+                                        <td key={colIdx} className={`cell-${col.type}`}>
+                                            {formatCellValue(row[col.key], col.type)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
     };
 
     const renderChatGroup = (title: string, chats: Chat[], icon?: React.ReactNode) => {
@@ -766,6 +830,8 @@ function App() {
                                                     </div>
                                                 )}
 
+                                                {renderTable(message)}
+
                                                 {renderChart(message)}
 
                                                 <div className="card-body">
@@ -789,9 +855,9 @@ function App() {
                                                             <button
                                                                 key={i}
                                                                 className="drill-chip"
-                                                                onClick={() => handleDrillDown(option.query)}
+                                                                onClick={() => handleDrillDown(option)}
                                                             >
-                                                                {option.icon} {option.label}
+                                                                <FiChevronRight size={14} /> {option}
                                                             </button>
                                                         ))}
                                                     </div>

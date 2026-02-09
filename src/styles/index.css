@@ -1918,3 +1918,108 @@ textarea:focus-visible {
     width: 260px;
   }
 }
+
+/* ============ DATA TABLES ============ */
+.data-table-container {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.table-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.data-table-wrapper {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.data-table th {
+  text-align: left;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table .cell-currency {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.data-table .cell-percentage {
+  font-weight: 500;
+}
+
+.data-table .cell-number {
+  font-feature-settings: "tnum";
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.status-badge.delivered,
+.status-badge.paid,
+.status-badge.connected,
+.status-badge.adequate {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+}
+
+.status-badge.in-transit,
+.status-badge.pending {
+  background: rgba(33, 150, 243, 0.15);
+  color: var(--info);
+}
+
+.status-badge.overdue,
+.status-badge.critical,
+.status-badge.low-stock {
+  background: rgba(244, 67, 54, 0.15);
+  color: var(--error);
+}
+
+.status-badge.overstocked {
+  background: rgba(255, 152, 0, 0.15);
+  color: var(--warning);
+}
+
+.status-badge.offline {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}

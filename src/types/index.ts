@@ -14,11 +14,24 @@ export interface Message {
         changeType?: 'positive' | 'negative' | 'neutral';
     };
     chartData?: ChartData;
+    tableData?: TableData;
     insights?: string[];
-    drillDownOptions?: DrillDownOption[];
+    drillDownOptions?: string[];
     confidence?: number;
     tablesUsed?: string[];
     lastRefresh?: Date;
+}
+
+export interface TableData {
+    title: string;
+    columns: TableColumn[];
+    rows: Record<string, any>[];
+}
+
+export interface TableColumn {
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'currency' | 'percentage' | 'status';
 }
 
 export interface ChartData {
