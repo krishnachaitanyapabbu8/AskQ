@@ -4,12 +4,12 @@ import {
     FiCode, FiMessageSquare, FiCopy, FiTrash2, FiCheck, FiHelpCircle, FiBookmark,
     FiShare2, FiDatabase, FiClock, FiRefreshCw, FiChevronRight, FiSearch,
     FiBookOpen, FiStar, FiCalendar, FiFilter, FiX, FiDownload, FiLogOut,
-    FiSettings, FiUser, FiLock, FiMail
+    FiSettings, FiLock, FiMail
 } from 'react-icons/fi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import type { Theme, Chat, Message, FilterContext, Playbook } from './types';
 import { mockChats, mockDataSources, mockPlaybooks, mockSavedInsights, defaultFilterContext, quickSuggestions } from './data/mockData';
-import { analyzeQuery, type AnalyticsResponse } from './data/queryAnalyzer';
+import { querySqlAgent } from './services/sqlAgentClient';
 
 function App() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -166,7 +166,47 @@ function App() {
 
         await simulateLoading();
 
-        const analyticsData: AnalyticsResponse = analyzeQuery(query);
+        let analyticsData;
+        try {
+            analyticsData = await querySqlAgent(query);
+            if (analyticsData.usedFallbackModel) {
+                showToast('Ollama unavailable. Using fallback SQL generator.', 'error');
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to process your question';
+            const aiErrorMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                content: `I couldn't process this query right now. ${errorMessage}`,
+                sender: 'assistant',
+                timestamp: new Date(),
+                title: 'SQL Agent Error',
+                insights: [
+                    'Check backend server status and API configuration.',
+                    'Ensure Ollama is running and OLLAMA_MODEL is configured on the backend.',
+                ],
+                drillDownOptions: [
+                    'Show recent orders',
+                    'Show revenue trend',
+                    'Show inventory status',
+                ],
+                confidence: 0,
+                tablesUsed: [],
+                sqlQuery: '',
+            };
+
+            const failedChat = {
+                ...baseChat,
+                title: query.substring(0, 40) + (query.length > 40 ? '...' : ''),
+                messages: [...baseChat.messages, userMessage, aiErrorMessage],
+                updatedAt: new Date(),
+            };
+
+            setChats(prevChats => prevChats.map(c => c.id === baseChat.id ? failedChat : c));
+            setActiveChat(failedChat);
+            setIsLoading(false);
+            showToast('SQL agent request failed', 'error');
+            return;
+        }
 
         const aiMessage: Message = {
             id: (Date.now() + 1).toString(),

@@ -1,41 +1,119 @@
-# AskQ - Enterprise AI Assistant
+# AskQ
 
-A premium conversational AI assistant for querying enterprise databases like SAP, RAMCO ERP, and EHR systems.
+AskQ is an enterprise analytics chat app with:
 
-## Features
+- A React/Vite frontend chat UI
+- A Python backend SQL agent API that uses an LLM to generate SQL
+- Server-side SQL execution against an in-memory SQLite analytics database built from mock ERP data
 
-- 🎨 **Glassmorphism UI** - Modern translucent panels with blur effects
-- 🌙 **Dark/Light Themes** - Toggle with smooth transitions
-- 💬 **Chat Interface** - Animated message bubbles with markdown support
-- 📊 **SQL Query Viewer** - View generated SQL queries
-- 📁 **Chat History** - Grouped by date (Today, Last 7 Days, Older)
-- 🔌 **Data Sources** - Connect to SAP, RAMCO, EHR and more
-- ✨ **Micro-animations** - Delightful hover effects and transitions
-- 📱 **Responsive** - Works on all screen sizes
+## SQL Agent Flow
 
-## Tech Stack
+1. User asks a question in chat.
+2. Frontend sends the question to `POST /api/sql-agent/query`.
+3. Backend LLM generates read-only SQL from schema context.
+4. Backend validates SQL safety (`SELECT`/`WITH` only, single statement, no DML/DDL).
+5. Backend executes SQL against an in-memory SQLite database.
+6. Backend LLM synthesizes answer + insights from actual query rows.
+7. Frontend renders answer, result table, and generated SQL.
 
-- **React 18** with TypeScript
-- **Vite** for fast development
-- **CSS3** with custom properties for theming
+## Prerequisites
 
-## Getting Started
+- Node.js 18+
+- Python 3.10+
+- Ollama running locally (recommended)
+
+## Setup
+
+1. Install dependencies:
 
 ```bash
-# Install dependencies
 npm install
+```
 
-# Start development server
+2. Create `.env` from `.env.example` and set values:
+
+```bash
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=onekq/OneSQL-v0.1-Qwen:1.5B-Q2_K
+OLLAMA_TIMEOUT_MS=60000
+API_PORT=3003
+SQL_AGENT_ALLOW_FALLBACK=false
+VITE_API_BASE_URL=/api
+```
+
+3. Install Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+4. Ensure the model is available in Ollama:
+
+```bash
+ollama pull onekq/OneSQL-v0.1-Qwen:1.5B-Q2_K
+ollama serve
+```
+
+## Run
+
+Terminal 1 (backend):
+
+```bash
+python -m backend.app
+```
+
+Terminal 2 (frontend):
+
+```bash
 npm run dev
+```
 
-# Build for production
+The Vite dev server proxies `/api` to `http://localhost:3003`.
+
+## Build
+
+```bash
 npm run build
 ```
 
-## Screenshots
+## API
 
-The application features a premium dark theme with teal/cyan accent colors and glassmorphism effects.
+### `GET /api/health`
 
-## License
+Returns service status and whether LLM config is present.
 
-MIT
+### `POST /api/sql-agent/query`
+
+Request:
+
+```json
+{
+  "question": "Show revenue trend by month",
+  "maxRows": 50
+}
+```
+
+Response:
+
+```json
+{
+  "title": "Revenue Analysis",
+  "answer": "Summary from executed rows...",
+  "sql": "SELECT ...",
+  "tablesUsed": ["monthly_revenue"],
+  "confidence": 91,
+  "table": {
+    "columns": ["month", "revenue"],
+    "rows": []
+  },
+  "insights": ["..."],
+  "followUps": ["..."],
+  "usedFallbackModel": false
+}
+```
+
+## Notes
+
+- Fallback SQL generation is intentionally disabled by default.
+- Backend uses Ollama for SQL generation and answer synthesis.
+- If Ollama is unavailable, you can enable rule-based fallback with `SQL_AGENT_ALLOW_FALLBACK=true`.

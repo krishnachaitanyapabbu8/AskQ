@@ -127,9 +127,9 @@ export const mockChats: Chat[] = [
                     'Plant Chicago accounts for 42% of all late orders',
                 ],
                 drillDownOptions: [
-                    { label: 'By Plant', icon: '🏭', query: 'Break down late orders by plant' },
-                    { label: 'By Customer', icon: '👥', query: 'Which customers were most affected?' },
-                    { label: 'By Cause', icon: '🔍', query: 'What caused the delays?' },
+                    'Break down late orders by plant',
+                    'Which customers were most affected?',
+                    'What caused the delays?',
                 ],
                 sqlQuery: `SELECT 
   MONTH(ship_date) as month,
@@ -165,98 +165,10 @@ ORDER BY month;`,
 ];
 
 export const quickSuggestions = [
+    { label: 'Revenue trend analysis', icon: '📈' },
+    { label: 'Top 5 customers', icon: '👥' },
+    { label: 'Inventory status', icon: '📦' },
     { label: 'Late orders by plant', icon: '🏭' },
-    { label: 'Revenue vs target', icon: '💰' },
-    { label: 'Top 10 customers', icon: '👥' },
-    { label: 'Inventory levels', icon: '📦' },
+    { label: 'Supplier performance', icon: '🚚' },
+    { label: 'Employee performance', icon: '👔' },
 ];
-
-export const generateAnalyticsResponse = (query: string): Partial<import('../types').Message> => {
-    // Simulate different response types based on query keywords
-    if (query.toLowerCase().includes('revenue') || query.toLowerCase().includes('sales')) {
-        return {
-            title: 'Revenue Analysis',
-            keyMetric: {
-                value: '$4.2M',
-                label: 'Total Revenue',
-                change: '+8.5% vs last month',
-                changeType: 'positive',
-            },
-            chartData: {
-                type: 'bar',
-                data: [
-                    { month: 'Jan', revenue: 1200000, target: 1100000 },
-                    { month: 'Feb', revenue: 1450000, target: 1300000 },
-                    { month: 'Mar', revenue: 1550000, target: 1400000 },
-                ],
-                xKey: 'month',
-                yKey: 'revenue',
-            },
-            insights: [
-                'Revenue exceeded target by 8.5% this quarter',
-                'February saw the highest growth at 12% MoM',
-                'North region contributes 45% of total revenue',
-            ],
-            drillDownOptions: [
-                { label: 'By Region', icon: '🗺️', query: 'Break down revenue by region' },
-                { label: 'By Product', icon: '📦', query: 'Revenue by product category' },
-                { label: 'Trend', icon: '📈', query: 'Show 6-month revenue trend' },
-            ],
-            confidence: 95,
-            tablesUsed: ['sales', 'invoices', 'customers'],
-        };
-    }
-
-    if (query.toLowerCase().includes('inventory') || query.toLowerCase().includes('stock')) {
-        return {
-            title: 'Inventory Status',
-            keyMetric: {
-                value: '12,450',
-                label: 'Total SKUs',
-                change: '234 at risk',
-                changeType: 'negative',
-            },
-            chartData: {
-                type: 'pie',
-                data: [
-                    { name: 'Healthy', value: 8500, color: '#4caf50' },
-                    { name: 'Low', value: 2200, color: '#ff9800' },
-                    { name: 'Critical', value: 1516, color: '#f44336' },
-                    { name: 'Stockout', value: 234, color: '#9c27b0' },
-                ],
-            },
-            insights: [
-                '234 items currently out of stock',
-                '1,516 items at critical levels (< 1 week)',
-                'Electronics category has the highest stockout rate',
-            ],
-            drillDownOptions: [
-                { label: 'By Category', icon: '📂', query: 'Inventory by category' },
-                { label: 'Stockouts', icon: '⚠️', query: 'Show all stockout items' },
-                { label: 'Reorder', icon: '🔄', query: 'Items needing reorder' },
-            ],
-            confidence: 88,
-            tablesUsed: ['inventory', 'products', 'warehouses'],
-        };
-    }
-
-    // Default response
-    return {
-        title: 'Query Results',
-        keyMetric: {
-            value: '1,234',
-            label: 'Records found',
-            changeType: 'neutral',
-        },
-        insights: [
-            'Query executed successfully',
-            'Results based on current data snapshot',
-        ],
-        drillDownOptions: [
-            { label: 'Details', icon: '📋', query: 'Show more details' },
-            { label: 'Export', icon: '📥', query: 'Export to CSV' },
-        ],
-        confidence: 85,
-        tablesUsed: ['data'],
-    };
-};
